@@ -42,8 +42,8 @@ if purchase_mode == "온라인 단일 채널 구매":
         lines = uploaded_purchase.read().decode("utf-8").splitlines()
         purchase_ids = [line.strip() for line in lines if line.strip()]
         
-        # '온라인(종이책)'으로 자동 분류하여 데이터프레임 생성
-        new_purchase_df = pd.DataFrame({"고객번호": purchase_ids, "구매채널": "온라인(종이책)"})
+        # '온라인'으로 자동 분류하여 데이터프레임 생성
+        new_purchase_df = pd.DataFrame({"고객번호": purchase_ids, "구매채널": "온라인"})
         
         # 기존 데이터 덮어쓰기 (단일 채널 모드이므로 새로 올릴 때마다 갱신)
         st.session_state.purchase_data = new_purchase_df.drop_duplicates(subset=["고객번호"]).reset_index(drop=True)
@@ -51,8 +51,8 @@ if purchase_mode == "온라인 단일 채널 구매":
 
 else:  # 복합채널 구매
     uploaded_purchase = st.sidebar.file_uploader("구매 고객 txt 업로드 (엔터 구분)", type=["txt"], key=f"purchase_multi_{p_cnt}")
-    channel_options = ["온라인(종이책)", "오프라인(종이책)", "온라인(eBook)", "B2B", "기타"]
-    channel_input = st.sidebar.selectbox("고객 채널 선택", options=channel_options, key=f"channel_select_{p_cnt}")
+    # 드롭박스에서 자유 텍스트 입력창(text_input)으로 변경
+    channel_input = st.sidebar.text_input("업로드한 파일의 구매 채널명 입력", key=f"channel_input_{p_cnt}")
     
     if st.sidebar.button("구매 데이터 추가 등록"):
         if uploaded_purchase and channel_input:
@@ -68,7 +68,7 @@ else:  # 복합채널 구매
             st.session_state.purchase_counter += 1
             st.rerun()
         else:
-            st.sidebar.error("파일을 업로드하고 구매 채널을 선택해주세요.")
+            st.sidebar.error("파일을 업로드하고 구매 채널명을 입력해주세요.")
 
 st.sidebar.markdown("---")
 
@@ -100,19 +100,15 @@ col1, col2 = st.columns(2)
 with col1:
     st.subheader("🛒 구매 고객 리스트")
     if not st.session_state.purchase_data.empty:
-        # 데이터프레임 복사 및 공백 제거
         df_p_summary = st.session_state.purchase_data.copy()
         df_p_summary["구매채널"] = df_p_summary["구매채널"].astype(str).str.strip()
         
-        # 채널별 구매고객수 집계
         p_counts = df_p_summary.groupby("구매채널")["고객번호"].nunique().reset_index()
         p_counts.columns = ["구매채널", "구매고객수"]
         
-        # 합계 행 데이터 생성
         p_total = pd.DataFrame([{"구매채널": "합계", "구매고객수": p_counts["구매고객수"].sum()}])
         p_summary_table = pd.concat([p_total, p_counts], ignore_index=True)
         
-        # 요약 표와 삭제 버튼 영역 분할 (8:2 비율)
         p_table_col, p_del_col = st.columns([4, 1])
         
         with p_table_col:
@@ -132,7 +128,6 @@ with col1:
                 
         st.divider()
         
-        # 수정 불가형 상위 5개 미리보기 토글 (기본 닫힘)
         with st.expander("▶ 구매 고객 상세 데이터 (상위 5개 미리보기)", expanded=False):
             st.dataframe(
                 st.session_state.purchase_data.head(5),
@@ -145,19 +140,15 @@ with col1:
 with col2:
     st.subheader("💬 발송 고객 리스트")
     if not st.session_state.sms_data.empty:
-        # 데이터프레임 복사 및 공백 제거
         df_s_summary = st.session_state.sms_data.copy()
         df_s_summary["세그먼트"] = df_s_summary["세그먼트"].astype(str).str.strip()
         
-        # 세그먼트별 발송고객수 집계
         s_counts = df_s_summary.groupby("세그먼트")["고객번호"].nunique().reset_index()
         s_counts.columns = ["세그먼트", "발송고객수"]
         
-        # 합계 행 데이터 생성
         s_total = pd.DataFrame([{"세그먼트": "합계", "발송고객수": s_counts["발송고객수"].sum()}])
         s_summary_table = pd.concat([s_total, s_counts], ignore_index=True)
         
-        # 요약 표와 삭제 버튼 영역 분할 (8:2 비율)
         s_table_col, s_del_col = st.columns([4, 1])
         
         with s_table_col:
@@ -177,7 +168,6 @@ with col2:
                 
         st.divider()
         
-        # 수정 불가형 상위 5개 미리보기 토글 (기본 닫힘)
         with st.expander("▶ 발송 고객 상세 데이터 (상위 5개 미리보기)", expanded=False):
             st.dataframe(
                 st.session_state.sms_data.head(5),
@@ -187,17 +177,12 @@ with col2:
     else:
         st.info("발송 고객 파일을 업로드하고 세그먼트를 등록해주세요.")
 
-if not st.session_state.purchase_data.empty and not st.session_state.sms_data.empty:
-    st.divider()
-    st.success("데이터 준비가 완료되었습니다. 다음 분석 단계를 진행할 수 있습니다.")
-
 # ==========================================
 # 메인 화면 하단: [분석 결과] CRM 결과 통합 분석
 # ==========================================
 if not st.session_state.purchase_data.empty and not st.session_state.sms_data.empty:
     st.header("📈 CRM 결과 분석")
     
-    # 데이터프레임 복사 및 정제
     df_sms = st.session_state.sms_data.copy()
     df_purchase = st.session_state.purchase_data.copy()
     
@@ -205,30 +190,22 @@ if not st.session_state.purchase_data.empty and not st.session_state.sms_data.em
     df_purchase["고객번호"] = df_purchase["고객번호"].astype(str).str.strip()
     df_purchase["구매채널"] = df_purchase["구매채널"].astype(str).str.strip()
     
-    # [동적 필터링] 유니크한 구매 채널 추출
     unique_channels = sorted(df_purchase["구매채널"].unique().tolist())
     selected_channels = unique_channels.copy()
     
-    # 구매 채널이 2개 이상일 때만 좌측 상단에 동적 체크박스 생성
     if len(unique_channels) >= 2:
         st.markdown("**🌐 구매 채널 필터 선택**")
-        # 한 줄로 배치하기 위해 컬럼 생성
         cols = st.columns(len(unique_channels))
         selected_channels = []
         for i, channel in enumerate(unique_channels):
             with cols[i]:
-                # 기본값을 True(체크 상태)로 설정
                 if st.checkbox(channel, value=True, key=f"chk_{channel}"):
                     selected_channels.append(channel)
         st.divider()
 
-    # 선택된 채널의 구매 데이터만 필터링
     df_purchase_filtered = df_purchase[df_purchase["구매채널"].isin(selected_channels)]
-    
-    # 전체 매칭 데이터 (Inner Join)
     df_matched = pd.merge(df_sms, df_purchase_filtered, on="고객번호", how="inner")
     
-    # 1. 개괄 항목 (상단 KPI 카드)
     st.subheader("(1) 문자메시지 발송 고객 중 상품 구매 현황")
     total_sms_cnt = len(df_sms["고객번호"].unique())
     total_purchase_cnt = len(df_matched["고객번호"].unique())
@@ -244,23 +221,16 @@ if not st.session_state.purchase_data.empty and not st.session_state.sms_data.em
         
     st.divider()
 
-    # 2. 세그먼트별 상세 분석 표 생성
     st.subheader("(2) 세그먼트별 상세 분석 결과")
     
-    # 각 세그먼트별 발송고객수 계산
     sms_by_seg = df_sms.groupby("세그먼트")["고객번호"].nunique().reset_index(name="발송고객수")
-    
-    # 각 세그먼트별 구매고객수 계산 (필터링된 매칭 데이터 기준)
     pure_by_seg = df_matched.groupby("세그먼트")["고객번호"].nunique().reset_index(name="구매고객수")
     
-    # 두 집계 데이터 병합
     seg_summary = pd.merge(sms_by_seg, pure_by_seg, on="세그먼트", how="left").fillna(0)
     seg_summary["구매고객수"] = seg_summary["구매고객수"].astype(int)
     
-    # 세그먼트별 구매 전환율 계산
     seg_summary["구매 전환율"] = (seg_summary["구매고객수"] / seg_summary["발송고객수"] * 100).round(2).map("{:.2f} %".format)
     
-    # 합계 행 데이터 연산
     total_sms_sum = seg_summary["발송고객수"].sum()
     total_pure_sum = seg_summary["구매고객수"].sum()
     total_cvr = (total_pure_sum / total_sms_sum * 100) if total_sms_sum > 0 else 0
@@ -272,15 +242,11 @@ if not st.session_state.purchase_data.empty and not st.session_state.sms_data.em
         "구매 전환율": f"{total_cvr:.2f} %"
     }])
     
-    # 합계 행을 최상단에 세팅
     seg_final_table = pd.concat([df_total_row, seg_summary], ignore_index=True)
-    
-    # 화면 표출
     st.dataframe(seg_final_table, use_container_width=True, hide_index=True)
     
     st.divider()
     
-    # 3. 상세 매칭 데이터 리스트 출력
     with st.expander("▶ 현재 필터 기준 구매 고객 명단 보기", expanded=False):
         if not df_matched.empty:
             st.dataframe(
