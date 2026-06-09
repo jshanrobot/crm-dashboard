@@ -149,4 +149,120 @@ with col2:
         s_counts.columns = ["세그먼트", "발송고객수"]
         
         s_total = pd.DataFrame([{"세그먼트": "합계", "발송고객수": s_counts["발송고객수"].sum()}])
-        s_summary_table = pd.
+        s_summary_table = pd.concat([s_total, s_counts], ignore_index=True)
+        
+        s_table_col, s_del_col = st.columns([4, 1])
+        
+        with s_table_col:
+            st.markdown("**[세그먼트별 요약]**")
+            st.dataframe(s_summary_table, use_container_width=True, hide_index=True)
+            
+        with s_del_col:
+            st.markdown("**[세그먼트 삭제]**")
+            current_segments = s_counts["세그먼트"].tolist()
+            if current_segments:
+                del_segment = st.selectbox("삭제할 세그먼트", options=current_segments, key="del_seg_select", label_visibility="collapsed")
+                if st.button("선택 삭제", key="del_seg_btn", use_container_width=True):
+                    st.session_state.sms_data = st.session_state.sms_data[st.session_state.sms_data["세그먼트"] != del_segment].reset_index(drop=True)
+                    st.rerun()
+            else:
+                st.caption("삭제할 세그먼트 없음")
+                
+        st.divider()
+        
+        with st.expander("▶ 발송 고객 상세 데이터 (상위 5개 미리보기)", expanded=False):
+            st.dataframe(
+                st.session_state.sms_data.head(5),
+                use_container_width=True,
+                hide_index=True
+            )
+    else:
+        # 변경사항 5 반영
+        st.info("발송 고객 파일을 업로드해주세요.")
+
+# ==========================================
+# 메인 화면 하단: [분석 결과] CRM 결과 통합 분석
+# ==========================================
+if not st.session_state.purchase_data.empty and not st.session_state.sms_data.empty:
+    st.header("📈 CRM 결과 분석")
+    
+    df_sms = st.session_state.sms_data.copy()
+    df_purchase = st.session_state.purchase_data.copy()
+    
+    df_sms["고객번호"] = df_sms["고객번호"].astype(str).str.strip()
+    df_purchase["고객번호"] = df_purchase["고객번호"].astype(str).str.strip()
+    df_purchase["구매채널"] = df_purchase["구매채널"].astype(str).str.strip()
+    
+    unique_channels = sorted(df_purchase["구매채널"].unique().tolist())
+    selected_channels = unique_channels.copy()
+    
+    if len(unique_channels) >= 2:
+        st.markdown("**🌐 구매 채널 필터 선택**")
+        cols = st.columns(len(unique_channels))
+        selected_channels = []
+        for i, channel in enumerate(unique_channels):
+            with cols[i]:
+                if st.checkbox(channel, value=True, key=f"chk_{channel}"):
+                    selected_channels.append(channel)
+        st.divider()
+
+    df_purchase_filtered = df_purchase[df_purchase["구매채널"].isin(selected_channels)]
+    df_matched = pd.merge(df_sms, df_purchase_filtered, on="고객번호", how="inner")
+    
+    st.subheader("(1) 문자메시지 발송 고객 중 상품 구매 현황")
+    total_sms_cnt = len(df_sms["고객번호"].unique())
+    total_purchase_cnt = len(df_matched["고객번호"].unique())
+    conversion_rate = (total_purchase_cnt / total_sms_cnt * 100) if total_sms_cnt > 0 else 0
+    
+    kpi1, kpi2, kpi3 = st.columns(3)
+    with kpi1:
+        st.metric(label="총 문자 발송 고객 수", value=f"{total_sms_cnt:,} 명")
+    with kpi2:
+        st.metric(label="문자 발송 후 구매 고객 수", value=f"{total_purchase_cnt:,} 명")
+    with kpi3:
+        st.metric(label="전체 구매 전환율 (CVR)", value=f"{conversion_rate:.2f} %")
+        
+    st.divider()
+
+    st.subheader("(2) 세그먼트별 상세 분석 결과")
+    
+    sms_by_seg = df_sms.groupby("세그먼트")["고객번호"].nunique().reset_index(name="발송고객수")
+    pure_by_seg = df_matched.groupby("세그먼트")["고객번호"].nunique().reset_index(name="구매고객수")
+    
+    seg_summary = pd.merge(sms_by_seg, pure_by_seg, on="세그먼트", how="left").fillna(0)
+    seg_summary["구매고객수"] = seg_summary["구매고객수"].astype(int)
+    
+    seg_summary["구매 전환율"] = (seg_summary["구매고객수"] / seg_summary["발송고객수"] * 100).round(2).map("{:.2f} %".format)
+    
+    total_sms_sum = seg_summary["발송고객수"].sum()
+    total_pure_sum = seg_summary["구매고객수"].sum()
+    total_cvr = (total_pure_sum / total_sms_sum * 100) if total_sms_sum > 0 else 0
+    
+    df_total_row = pd.DataFrame([{
+        "세그먼트": "합계",
+        "발송고객수": total_sms_sum,
+        "구매고객수": total_pure_sum,
+        "구매 전환율": f"{total_cvr:.2f} %"
+    }])
+    
+    seg_final_table = pd.concat([df_total_row, seg_summary], ignore_index=True)
+    st.dataframe(seg_final_table, use_container_width=True, hide_index=True)
+    
+    st.divider()
+    
+    with st.expander("▶ 현재 필터 기준 구매 고객 명단 보기", expanded=False):
+        if not df_matched.empty:
+            st.dataframe(
+                df_matched[["고객번호", "세그먼트", "구매채널"]].drop_duplicates().reset_index(drop=True), 
+                use_container_width=True
+            )
+            
+            csv = df_matched[["고객번호", "세그먼트", "구매채널"]].drop_duplicates().to_csv(index=False).encode('utf-8-sig')
+            st.download_button(
+                label="📥 구매 매칭 고객 명단 다운로드 (CSV)",
+                data=csv,
+                file_name="sms_purchased_filtered.csv",
+                mime="text/csv"
+            )
+        else:
+            st.warning("선택된 조건에 매칭되는 구매 데이터가 없습니다.")
