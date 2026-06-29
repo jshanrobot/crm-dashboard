@@ -26,7 +26,6 @@ st.sidebar.header("📁 데이터 업로드 관리")
 # 1. 구매 고객 데이터 업로드 영역
 st.sidebar.subheader("1. 구매 고객 데이터")
 
-# 채널 선택 라디오 버튼 (변경사항 1 반영)
 purchase_mode = st.sidebar.radio(
     "구매 채널 모드 선택",
     ["온라인 단일 채널 구매", "복합채널/복합도서 구매"],
@@ -36,40 +35,49 @@ purchase_mode = st.sidebar.radio(
 p_cnt = st.session_state.purchase_counter
 
 if purchase_mode == "온라인 단일 채널 구매":
-    uploaded_purchase = st.sidebar.file_uploader("구매 고객 txt 업로드 (엔터 구분)", type=["txt"], key=f"purchase_single_{p_cnt}")
+    # 업로드 방식 선택
+    p_single_type = st.sidebar.radio("업로드 방식", ["텍스트 파일 업로드", "직접 번호 붙여넣기"], key=f"p_single_type_{p_cnt}")
+    purchase_ids = []
     
-    if uploaded_purchase:
-        lines = uploaded_purchase.read().decode("utf-8").splitlines()
-        purchase_ids = [line.strip() for line in lines if line.strip()]
-        
-        # '온라인'으로 자동 분류하여 데이터프레임 생성
+    if p_single_type == "텍스트 파일 업로드":
+        uploaded_purchase = st.sidebar.file_uploader("구매 고객 txt 업로드 (엔터 구분)", type=["txt"], key=f"purchase_single_file_{p_cnt}")
+        if uploaded_purchase:
+            lines = uploaded_purchase.read().decode("utf-8").splitlines()
+            purchase_ids = [line.strip() for line in lines if line.strip()]
+    else:
+        text_purchase = st.sidebar.text_area("회원번호 입력 (엔터로 구분)", key=f"purchase_single_text_{p_cnt}", height=150)
+        if text_purchase:
+            purchase_ids = [line.strip() for line in text_purchase.splitlines() if line.strip()]
+            
+    if purchase_ids:
         new_purchase_df = pd.DataFrame({"고객번호": purchase_ids, "구매채널": "온라인"})
-        
-        # 기존 데이터 덮어쓰기 (단일 채널 모드이므로 새로 올릴 때마다 갱신)
         st.session_state.purchase_data = new_purchase_df.drop_duplicates(subset=["고객번호"]).reset_index(drop=True)
         st.sidebar.success(f"온라인 단일 채널 {len(purchase_ids)}명 로드 완료")
 
 else:  # 복합채널/복합도서 구매
-    uploaded_purchase = st.sidebar.file_uploader("구매 고객 txt 업로드 (엔터 구분)", type=["txt"], key=f"purchase_multi_{p_cnt}")
-    # 변경사항 2 반영
-    channel_input = st.sidebar.text_input("업로드한 파일의 세그먼트명 입력", key=f"channel_input_{p_cnt}")
+    p_multi_type = st.sidebar.radio("업로드 방식", ["텍스트 파일 업로드", "직접 번호 붙여넣기"], key=f"p_multi_type_{p_cnt}")
+    purchase_ids = []
     
-    # 변경사항 3 반영
-    if st.sidebar.button("구매 데이터 등록"):
-        if uploaded_purchase and channel_input:
+    if p_multi_type == "텍스트 파일 업로드":
+        uploaded_purchase = st.sidebar.file_uploader("구매 고객 txt 업로드 (엔터 구분)", type=["txt"], key=f"purchase_multi_file_{p_cnt}")
+        if uploaded_purchase:
             lines = uploaded_purchase.read().decode("utf-8").splitlines()
             purchase_ids = [line.strip() for line in lines if line.strip()]
+    else:
+        text_purchase = st.sidebar.text_area("회원번호 입력 (엔터로 구분)", key=f"purchase_multi_text_{p_cnt}", height=150)
+        if text_purchase:
+            purchase_ids = [line.strip() for line in text_purchase.splitlines() if line.strip()]
             
+    channel_input = st.sidebar.text_input("업로드한 파일의 세그먼트명 입력", key=f"channel_input_{p_cnt}")
+    
+    if st.sidebar.button("구매 데이터 등록"):
+        if purchase_ids and channel_input:
             new_purchase_df = pd.DataFrame({"고객번호": purchase_ids, "구매채널": channel_input})
-            
-            # 기존 데이터와 병합 (중복 제거 시 최근 등록 채널 우선)
             st.session_state.purchase_data = pd.concat([st.session_state.purchase_data, new_purchase_df]).drop_duplicates(subset=["고객번호"], keep="last").reset_index(drop=True)
-            
-            # 카운터 증가 및 새로고침으로 입력창 초기화
             st.session_state.purchase_counter += 1
             st.rerun()
         else:
-            st.sidebar.error("파일을 업로드하고 세그먼트명을 입력해주세요.")
+            st.sidebar.error("데이터(파일/텍스트)를 입력하고 세그먼트명을 입력해주세요.")
 
 st.sidebar.markdown("---")
 
@@ -77,22 +85,29 @@ st.sidebar.markdown("---")
 st.sidebar.subheader("2. 발송 고객 데이터 추가")
 
 s_cnt = st.session_state.sms_counter
-uploaded_sms = st.sidebar.file_uploader("발송 고객 txt 업로드 (엔터 구분)", type=["txt"], key=f"sms_upload_{s_cnt}")
-segment_input = st.sidebar.text_input("업로드한 파일의 세그먼트명 입력", key=f"segment_input_{s_cnt}")
+s_type = st.sidebar.radio("업로드 방식", ["텍스트 파일 업로드", "직접 번호 붙여넣기"], key=f"s_type_{s_cnt}")
+sms_ids = []
 
-# 변경사항 4 반영
-if st.sidebar.button("발송 데이터 등록"):
-    if uploaded_sms and segment_input:
+if s_type == "텍스트 파일 업로드":
+    uploaded_sms = st.sidebar.file_uploader("발송 고객 txt 업로드 (엔터 구분)", type=["txt"], key=f"sms_upload_file_{s_cnt}")
+    if uploaded_sms:
         lines = uploaded_sms.read().decode("utf-8").splitlines()
         sms_ids = [line.strip() for line in lines if line.strip()]
-        
+else:
+    text_sms = st.sidebar.text_area("회원번호 입력 (엔터로 구분)", key=f"sms_upload_text_{s_cnt}", height=150)
+    if text_sms:
+        sms_ids = [line.strip() for line in text_sms.splitlines() if line.strip()]
+
+segment_input = st.sidebar.text_input("업로드한 파일의 세그먼트명 입력", key=f"segment_input_{s_cnt}")
+
+if st.sidebar.button("발송 데이터 등록"):
+    if sms_ids and segment_input:
         new_sms_df = pd.DataFrame({"고객번호": sms_ids, "세그먼트": segment_input})
         st.session_state.sms_data = pd.concat([st.session_state.sms_data, new_sms_df]).drop_duplicates(subset=["고객번호"], keep="last").reset_index(drop=True)
-        
         st.session_state.sms_counter += 1
         st.rerun()
     else:
-        st.sidebar.error("파일을 업로드하고 세그먼트명을 입력해주세요.")
+        st.sidebar.error("데이터(파일/텍스트)를 입력하고 세그먼트명을 입력해주세요.")
 
 # ==========================================
 # 메인 화면: 데이터 확인 및 수정
@@ -177,7 +192,6 @@ with col2:
                 hide_index=True
             )
     else:
-        # 변경사항 5 반영
         st.info("발송 고객 파일을 업로드해주세요.")
 
 # ==========================================
